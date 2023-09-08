@@ -1,0 +1,31 @@
+version: '3.5'
+
+services:
+ 
+  db:
+    image: postgres:15.4
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: test
+      POSTGRES_USER: test
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./import.sql:/docker-entrypoint-initdb.d/import.sql
+      - ./postgresql.conf:/docker-entrypoint-initdb.d/postgresql.conf
+    command: postgres -c config_file=/docker-entrypoint-initdb.d/postgresql.conf
+    deploy:
+      resources:
+        limits:
+          cpus: '0.75'
+          memory: '1.5GB'
+
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - 8085:8080
+ 
+volumes:
+  pgdata:
