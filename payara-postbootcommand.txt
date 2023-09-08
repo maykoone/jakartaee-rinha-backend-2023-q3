@@ -1,3 +1,1 @@
-delete-jvm-options -Xmx=512m
-create-jvm-options -Xmx=512m
-create-jvm-options -Xms=512m
+set-log-levels org.eclipse.jakarta.hello.PersonsServlet=WARNING
