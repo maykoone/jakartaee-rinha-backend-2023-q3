@@ -29,9 +29,9 @@
 			<value>false</value>
 		</property>
 
-		<initial-pool-size>30</initial-pool-size>
-		<max-pool-size>30</max-pool-size>
-		<min-pool-size>30</min-pool-size>
+		<initial-pool-size>15</initial-pool-size>
+		<max-pool-size>15</max-pool-size>
+		<min-pool-size>15</min-pool-size>
 	</data-source>
 
 
