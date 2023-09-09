@@ -40,7 +40,7 @@ import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
-@WebServlet("/pessoas/*")
+@WebServlet(value="/pessoas/*", loadOnStartup = 0)
 public class PersonsServlet extends HttpServlet {
 
     private static final Logger LOG = Logger.getLogger(PersonsServlet.class.getName());
@@ -52,7 +52,7 @@ public class PersonsServlet extends HttpServlet {
     CacheManager manager;
 
     @Inject
-    Cache cache;
+    Cache<String, Object> cache;
 
     @PostConstruct
     void postConstruct() {
@@ -99,6 +99,12 @@ public class PersonsServlet extends HttpServlet {
 
             var personRecord = new Person(UUID.randomUUID(), apelido, nome, nascimento.orElse(null), stack);
 
+            if (cache != null && cache.containsKey("post"+apelido)) {
+                LOG.severe("Apelido ja criado");
+                response.setStatus(422);
+                return;
+            }
+
             String sql = "INSERT INTO people (id, apelido, nome, nascimento, stack) VALUES (?, ?, ?, ?, ?);";
             try (
                     Connection conn = dataSource.getConnection();
@@ -111,6 +117,8 @@ public class PersonsServlet extends HttpServlet {
                 stmt.setString(5, personRecord.stack() != null ? String.join(",", personRecord.stack()) : null);
                 int updatedRows = stmt.executeUpdate();
                 LOG.info("Inserted " + updatedRows + " Person");
+                if (cache != null)
+                    cache.put("post"+ apelido, 1);
             } catch (Exception e) {
                 LOG.severe(e.getMessage());
                 response.setStatus(422);
@@ -178,7 +186,7 @@ public class PersonsServlet extends HttpServlet {
             // String sql = "SELECT id, apelido, nome, nascimento, stack FROM people where apelido ilike ? or nome ilike ? or stack ilike ? LIMIT 50;";
             String sql = "SELECT id, apelido, nome, nascimento, stack FROM people where busca_trgm like ? LIMIT 50;";
 
-            String jsonData = (String) cache.get(termo);
+            String jsonData = (String) (cache != null ? cache.get(termo) : null);
             if (jsonData != null) {
                 LOG.info("---> From cache");
                 response.getWriter().write(jsonData);
@@ -199,19 +207,23 @@ public class PersonsServlet extends HttpServlet {
 
                         jsonArrayBuilder.add(model);
                     }
-                    // try (JsonWriter jw = Json.createWriter(response.getWriter())) {
-                    //     jw.writeArray(jsonArrayBuilder.build());
-                    // }
 
-                    StringWriter sw = new StringWriter();
-                    try (JsonWriter jw = Json.createWriter(sw)) {
-                        jw.writeArray(jsonArrayBuilder.build());
-                        jsonData = sw.toString();
-                        cache.put(termo, jsonData);
-                        response.getWriter().write(jsonData);
+                    if (cache == null) {
+                        try (JsonWriter jw = Json.createWriter(response.getWriter())) {
+                            jw.writeArray(jsonArrayBuilder.build());
+                        }
+
+                    } else {
+                        StringWriter sw = new StringWriter();
+                        try (JsonWriter jw = Json.createWriter(sw)) {
+                            jw.writeArray(jsonArrayBuilder.build());
+                            jsonData = sw.toString();
+                            cache.put(termo, jsonData);
+                            response.getWriter().write(jsonData);
+                        }
                     }
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    LOG.severe(e.getMessage());
                     response.setStatus(500);
                 }
             }
