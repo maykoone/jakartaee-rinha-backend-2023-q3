@@ -17,12 +17,12 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: '1.5g'
+          cpus: '0.3'
+          memory: '1.2g'
 
   api1: # API - Instância 01
     image: maykoone/jakartaee-rinha-backend:latest
-    command: --deploy /opt/payara/deployments/app.war --contextroot ROOT --nohazelcast --disablephonehome --maxhttpthreads 15 --minhttpthreads 15 --postbootcommandfile /opt/payara/payara-postbootcommand.txt
+    command: --deploy /opt/payara/deployments/app.war --contextroot ROOT --nohazelcast --disablephonehome --maxhttpthreads 100 --minhttpthreads 100 --postbootcommandfile /opt/payara/payara-postbootcommand.txt
     hostname: api1
     environment:
       DB_SERVER_NAME: db
@@ -36,12 +36,12 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.425'
-          memory: '0.5g'
+          cpus: '0.8'
+          memory: '0.65g'
 
   api2: # API - Instância 02
     image: maykoone/jakartaee-rinha-backend:latest
-    command: --deploy /opt/payara/deployments/app.war --contextroot ROOT --nohazelcast --disablephonehome --maxhttpthreads 15 --minhttpthreads 15 --postbootcommandfile /opt/payara/payara-postbootcommand.txt
+    command: --deploy /opt/payara/deployments/app.war --contextroot ROOT --nohazelcast --disablephonehome --maxhttpthreads 3 --minhttpthreads 3 --postbootcommandfile /opt/payara/payara-postbootcommand.txt
     hostname: api2
     environment:
       DB_SERVER_NAME: db
@@ -55,8 +55,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.425'
-          memory: '0.5g'
+          cpus: '0.3'
+          memory: '0.65g'
 
   nginx: # Load Balancer
     image: nginx:latest
@@ -72,7 +72,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.15'
+          cpus: '0.1'
           memory: '0.5g'
 
   # adminer:
