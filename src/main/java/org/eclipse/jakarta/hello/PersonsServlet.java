@@ -12,6 +12,8 @@ import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -51,12 +53,15 @@ public class PersonsServlet extends HttpServlet {
     @Inject
     CacheManager manager;
 
-    @Inject
-    Cache<String, Object> cache;
+    // @Inject
+    // Cache<String, Object> cache;
+    Map<String, Object> cache;
 
     @PostConstruct
     void postConstruct() {
         LOG.info("---> Initialize PersonsServlet");
+
+        cache = new HashMap<>();
     }
 
     @Override
