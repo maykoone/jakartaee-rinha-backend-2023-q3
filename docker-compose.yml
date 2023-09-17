@@ -21,11 +21,13 @@ services:
           memory: '1.2g'
 
   api1: # API - Instância 01
-    image: maykoone/jakartaee-rinha-backend:latest
-    command: --deploy /opt/payara/deployments/app.war --contextroot ROOT --nohazelcast --disablephonehome --maxhttpthreads 100 --minhttpthreads 100 --postbootcommandfile /opt/payara/payara-postbootcommand.txt
+    image: maykoone/jakartaee-rinha-backend:test
+    #command: --deploy /opt/payara/deployments/app.war --contextroot ROOT --nohazelcast --disablephonehome --maxhttpthreads 100 --minhttpthreads 100 --postbootcommandfile /opt/payara/payara-postbootcommand.txt
     hostname: api1
     environment:
       DB_SERVER_NAME: db
+      MIN_HTTP_THREADS: 50
+      MAX_HTTP_THREADS: 50
     depends_on:
       - db
     expose:
@@ -40,11 +42,13 @@ services:
           memory: '0.65g'
 
   api2: # API - Instância 02
-    image: maykoone/jakartaee-rinha-backend:latest
-    command: --deploy /opt/payara/deployments/app.war --contextroot ROOT --nohazelcast --disablephonehome --maxhttpthreads 3 --minhttpthreads 3 --postbootcommandfile /opt/payara/payara-postbootcommand.txt
+    image: maykoone/jakartaee-rinha-backend:test
+    #command: --deploy /opt/payara/deployments/app.war --contextroot ROOT --nohazelcast --disablephonehome --maxhttpthreads 3 --minhttpthreads 3 --postbootcommandfile /opt/payara/payara-postbootcommand.txt
     hostname: api2
     environment:
       DB_SERVER_NAME: db
+      MIN_HTTP_THREADS: 3
+      MAX_HTTP_THREADS: 3
     depends_on:
       - db
     expose:

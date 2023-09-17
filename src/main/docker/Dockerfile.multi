@@ -1,0 +1,29 @@
+FROM payara/micro:6.2023.8-jdk17 as BUILD
+
+COPY target/jakartaee-hello-world.war $DEPLOY_DIR/app.war
+COPY payara-postbootcommand.txt /opt/payara
+
+RUN java -jar payara-micro.jar --rootdir micro-app --outputlauncher && \
+    java -XX:DumpLoadedClassList=micro-app/classes.lst -jar micro-app/launch-micro.jar \
+        --nohazelcast --disablephonehome --postbootcommandfile /opt/payara/payara-postbootcommand.txt \
+        --deploy /opt/payara/deployments/app.war:/ --warmup && \
+    java -Xshare:dump -XX:SharedClassListFile=micro-app/classes.lst -XX:SharedArchiveFile=micro-app/payara.jsa \
+        -jar micro-app/launch-micro.jar
+
+#FROM azul/zulu-openjdk-alpine:17-jre
+#FROM azul/zulu-openjdk:17.0.8-jre
+
+#EXPOSE 6900 8080
+
+ENV JVM_ARGS="" \
+    MEM_MAX_RAM_PERCENTAGE="70.0" \
+    MEM_XSS="512k" \
+    MAX_HTTP_THREADS="10" \
+    MIN_HTTP_THREADS="10"
+
+#COPY --from=BUILD /opt/payara/micro-app /micro-app
+#COPY --from=BUILD /opt/payara/deployments/app.war /app.war
+
+ENTRYPOINT java -XX:InitialRAMPercentage=70.0 -XX:MaxRAMPercentage=${MEM_MAX_RAM_PERCENTAGE} -Xss${MEM_XSS} \
+    -XX:+UseContainerSupport ${JVM_ARGS} -Xshare:on -XX:SharedArchiveFile=micro-app/payara.jsa \
+    -jar micro-app/launch-micro.jar --minhttpthreads ${MIN_HTTP_THREADS} --maxhttpthreads ${MAX_HTTP_THREADS}
