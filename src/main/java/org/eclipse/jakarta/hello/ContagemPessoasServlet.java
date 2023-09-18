@@ -18,7 +18,7 @@ import jakarta.servlet.http.HttpServletResponse;
 @WebServlet("/contagem-pessoas")
 public class ContagemPessoasServlet extends HttpServlet {
     
-    @Resource(lookup = "java:global/PersonsDataSource")
+    @Resource(lookup = "java:global/PessoaDataSource")
     DataSource dataSource;
 
     @Override
@@ -28,7 +28,7 @@ public class ContagemPessoasServlet extends HttpServlet {
         response.setCharacterEncoding("UTF-8");
         response.setContentType("text/plain");
 
-        String sql = "SELECT COUNT(id) FROM people;";
+        String sql = "SELECT COUNT(id) FROM pessoa;";
         try (Connection conn = dataSource.getConnection();
             Statement stmt = conn.createStatement()) {
 

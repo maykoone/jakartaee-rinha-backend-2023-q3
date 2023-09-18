@@ -1,7 +1,6 @@
 package org.eclipse.jakarta.hello;
 
 import java.io.IOException;
-import java.io.StringReader;
 import java.io.StringWriter;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -10,7 +9,6 @@ import java.sql.SQLException;
 import java.sql.Types;
 import java.time.DateTimeException;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -19,7 +17,6 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.logging.Logger;
 
-import javax.cache.Cache;
 import javax.cache.CacheManager;
 import javax.sql.DataSource;
 
@@ -43,23 +40,23 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 @WebServlet(value="/pessoas/*", loadOnStartup = 0)
-public class PersonsServlet extends HttpServlet {
+public class PessoaServlet extends HttpServlet {
 
-    private static final Logger LOG = Logger.getLogger(PersonsServlet.class.getName());
+    private static final Logger LOG = Logger.getLogger(PessoaServlet.class.getName());
 
-    @Resource(lookup = "java:global/PersonsDataSource")
+    @Resource(lookup = "java:global/PessoaDataSource")
     DataSource dataSource;
 
     @Inject
     CacheManager manager;
 
     // @Inject
-    // Cache<String, Object> cache;
+    // javax.cache.Cache<String, Object> cache;
     Map<String, Object> cache;
 
     @PostConstruct
     void postConstruct() {
-        LOG.info("---> Initialize PersonsServlet");
+        LOG.info("---> Initialize PessoaServlet");
 
         cache = new HashMap<>();
     }
@@ -71,12 +68,8 @@ public class PersonsServlet extends HttpServlet {
             throws ServletException, IOException {
 
         try {
-            request.setCharacterEncoding("UTF-8");
-            response.setContentType("application/json");
-
-            LOG.info("---> ContextPath: " + request.getContextPath()
-                + "\n---> ServletPath: " + request.getServletPath()
-                + "\n---> PathInfo   : " + request.getPathInfo());
+            prepareResponse(response);
+            logRequest(request);
 
             JsonReader jsonReader = Json.createReader(request.getReader());
             JsonObject person = jsonReader.readObject();
@@ -102,18 +95,17 @@ public class PersonsServlet extends HttpServlet {
                 }
             }
 
-            var personRecord = new Person(UUID.randomUUID(), apelido, nome, nascimento.orElse(null), stack);
+            var personRecord = new Pessoa(UUID.randomUUID(), apelido, nome, nascimento.orElse(null), stack);
 
-            if (cache != null && cache.containsKey("post"+apelido)) {
+            if (apelidoJaCriado(apelido)) {
                 LOG.severe("Apelido ja criado");
                 response.setStatus(422);
                 return;
             }
 
-            String sql = "INSERT INTO people (id, apelido, nome, nascimento, stack) VALUES (?, ?, ?, ?, ?);";
-            try (
-                    Connection conn = dataSource.getConnection();
-                    PreparedStatement stmt = conn.prepareStatement(sql)) {
+            String sql = "INSERT INTO pessoa (id, apelido, nome, nascimento, stack) VALUES (?, ?, ?, ?, ?);";
+            try (Connection conn = dataSource.getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(sql)) {
 
                 stmt.setObject(1, personRecord.id(), Types.OTHER);
                 stmt.setString(2, personRecord.apelido());
@@ -122,8 +114,7 @@ public class PersonsServlet extends HttpServlet {
                 stmt.setString(5, personRecord.stack() != null ? String.join(",", personRecord.stack()) : null);
                 int updatedRows = stmt.executeUpdate();
                 LOG.info("Inserted " + updatedRows + " Person");
-                if (cache != null)
-                    cache.put("post"+ apelido, 1);
+                incluirApelidoCache(apelido);
             } catch (Exception e) {
                 LOG.severe(e.getMessage());
                 response.setStatus(422);
@@ -143,99 +134,123 @@ public class PersonsServlet extends HttpServlet {
         }
     }
 
+    private void incluirApelidoCache(String apelido) {
+        if (cache != null)
+            cache.put("post"+ apelido, 1);
+    }
+
+    private boolean apelidoJaCriado(String apelido) {
+        return cache != null && cache.containsKey("post"+apelido);
+    }
+
     @Override
     protected void doGet(
             HttpServletRequest request,
             HttpServletResponse response)
             throws ServletException, IOException {
 
-        response.setCharacterEncoding("UTF-8");
-        response.setContentType("application/json");
-        response.setBufferSize(8192);
-
-        LOG.info("---> ContextPath: " + request.getContextPath()
-            +"\n---> ServletPath: " + request.getServletPath()
-            +"\n---> PathInfo   : " + request.getPathInfo()
-            +"\n---> RequestURI : " + request.getRequestURI());
+        prepareResponse(response);
+        logRequest(request);
 
         if (!Objects.isNull(request.getPathInfo())) {
-            String[] parts = request.getPathInfo().split("/");
-
-            LOG.info("---> GET /persons/" + parts[1]);
-            String id = parts[1];
-
-            String sql = "SELECT id, apelido, nome, nascimento, stack FROM people where id = ?;";
-
-            try (
-                Connection conn = dataSource.getConnection();
-                PreparedStatement stmt = conn.prepareStatement(sql)) {
-
-                stmt.setObject(1, UUID.fromString(id), Types.OTHER);
-                ResultSet rs = stmt.executeQuery();
-
-                if (rs.next()) {
-                    JsonObjectBuilder model = createJsonObjectFromResultSet(rs);
-
-                    try (JsonWriter jw = Json.createWriter(response.getWriter())) {
-                        jw.writeObject(model.build());
-                    }
-                } else {
-                    response.setStatus(404);
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-                response.setStatus(500);
-            }
+            buscarPessoaPorId(request, response);
         } else if (!Objects.isNull(request.getParameter("t")) && !request.getParameter("t").equals("")) {
-            String termo = request.getParameter("t");
-            // String sql = "SELECT id, apelido, nome, nascimento, stack FROM people where apelido ilike ? or nome ilike ? or stack ilike ? LIMIT 50;";
-            String sql = "SELECT id, apelido, nome, nascimento, stack FROM people where busca_trgm like ? LIMIT 50;";
-
-            String jsonData = (String) (cache != null ? cache.get(termo) : null);
-            if (jsonData != null) {
-                LOG.info("---> From cache");
-                response.getWriter().write(jsonData);
-            } else {
-                try (
-                        Connection conn = dataSource.getConnection();
-                        PreparedStatement stmt = conn.prepareStatement(sql)) {
-
-                    stmt.setString(1, "%" + termo.toLowerCase() + "%");
-                    // stmt.setString(2, "%" + termo + "%");
-                    // stmt.setString(3, "%" + termo + "%");
-                    ResultSet rs = stmt.executeQuery();
-
-                    JsonArrayBuilder jsonArrayBuilder = Json.createArrayBuilder();
-
-                    while (rs.next()) {
-                        JsonObjectBuilder model = createJsonObjectFromResultSet(rs);
-
-                        jsonArrayBuilder.add(model);
-                    }
-
-                    if (cache == null) {
-                        try (JsonWriter jw = Json.createWriter(response.getWriter())) {
-                            jw.writeArray(jsonArrayBuilder.build());
-                        }
-
-                    } else {
-                        StringWriter sw = new StringWriter();
-                        try (JsonWriter jw = Json.createWriter(sw)) {
-                            jw.writeArray(jsonArrayBuilder.build());
-                            jsonData = sw.toString();
-                            cache.put(termo, jsonData);
-                            response.getWriter().write(jsonData);
-                        }
-                    }
-                } catch (Exception e) {
-                    LOG.severe(e.getMessage());
-                    response.setStatus(500);
-                }
-            }
+            buscarPessoasPorTermo(request, response);
         } else {
             response.setStatus(400);
         }
 
+    }
+
+    private void buscarPessoasPorTermo(HttpServletRequest request, HttpServletResponse response) throws IOException {
+        String termo = request.getParameter("t");
+        // String sql = "SELECT id, apelido, nome, nascimento, stack FROM pessoa where apelido ilike ? or nome ilike ? or stack ilike ? LIMIT 50;";
+        String sql = "SELECT id, apelido, nome, nascimento, stack FROM pessoa where busca_trgm like ? LIMIT 50;";
+
+        String jsonData = (String) (cache != null ? cache.get(termo) : null);
+        if (jsonData != null) {
+            LOG.info("---> From cache");
+            response.getWriter().write(jsonData);
+        } else {
+            try (
+                    Connection conn = dataSource.getConnection();
+                    PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+                stmt.setString(1, "%" + termo.toLowerCase() + "%");
+                // stmt.setString(2, "%" + termo + "%");
+                // stmt.setString(3, "%" + termo + "%");
+                ResultSet rs = stmt.executeQuery();
+
+                JsonArrayBuilder jsonArrayBuilder = Json.createArrayBuilder();
+
+                while (rs.next()) {
+                    JsonObjectBuilder model = createJsonObjectFromResultSet(rs);
+
+                    jsonArrayBuilder.add(model);
+                }
+
+                if (cache == null) {
+                    try (JsonWriter jw = Json.createWriter(response.getWriter())) {
+                        jw.writeArray(jsonArrayBuilder.build());
+                    }
+
+                } else {
+                    StringWriter sw = new StringWriter();
+                    try (JsonWriter jw = Json.createWriter(sw)) {
+                        jw.writeArray(jsonArrayBuilder.build());
+                        jsonData = sw.toString();
+                        cache.put(termo, jsonData);
+                        response.getWriter().write(jsonData);
+                    }
+                }
+            } catch (Exception e) {
+                LOG.severe(e.getMessage());
+                response.setStatus(500);
+            }
+        }
+    }
+
+    private void buscarPessoaPorId(HttpServletRequest request, HttpServletResponse response) {
+        String[] parts = request.getPathInfo().split("/");
+
+        LOG.info("---> GET /persons/" + parts[1]);
+        String id = parts[1];
+
+        String sql = "SELECT id, apelido, nome, nascimento, stack FROM pessoa where id = ?;";
+
+        try (
+            Connection conn = dataSource.getConnection();
+            PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setObject(1, UUID.fromString(id), Types.OTHER);
+            ResultSet rs = stmt.executeQuery();
+
+            if (rs.next()) {
+                JsonObjectBuilder model = createJsonObjectFromResultSet(rs);
+
+                try (JsonWriter jw = Json.createWriter(response.getWriter())) {
+                    jw.writeObject(model.build());
+                }
+            } else {
+                response.setStatus(404);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            response.setStatus(500);
+        }
+    }
+
+    private void logRequest(HttpServletRequest request) {
+        LOG.info("---> ContextPath: " + request.getContextPath()
+            +"\n---> ServletPath: " + request.getServletPath()
+            +"\n---> PathInfo   : " + request.getPathInfo()
+            +"\n---> RequestURI : " + request.getRequestURI());
+    }
+
+    private void prepareResponse(HttpServletResponse response) {
+        response.setCharacterEncoding("UTF-8");
+        response.setContentType("application/json");
+        response.setBufferSize(8192);
     }
 
     private JsonObjectBuilder createJsonObjectFromResultSet(ResultSet rs) throws SQLException {
@@ -245,7 +260,7 @@ public class PersonsServlet extends HttpServlet {
         LocalDate nascimento = rs.getObject(4, LocalDate.class);
         String stack = rs.getString(5);
 
-        LOG.info("---> Retrieve Person"
+        LOG.info("---> Pessoa"
          + "\n---> [id=" + uuid + ", apelido=" + apelido + ", nome=" + nome + ", nascimento="
                 + nascimento + ", stack=" + stack + "]");
 
@@ -260,27 +275,6 @@ public class PersonsServlet extends HttpServlet {
         else
             model.add("stack", Json.createArrayBuilder(Arrays.asList(stack.split(","))));
         return model;
-    }
-
-    public record Person(UUID id, String apelido, String nome, LocalDate nascimento, String[] stack) {
-        public Person {
-            Objects.requireNonNull(apelido, () -> "Apelido não pode ser nulo");
-            Objects.requireNonNull(nome, () -> "Nome não pode ser nulo");
-            Objects.requireNonNull(nascimento, () -> "Nascimento não pode ser nulo");
-
-            if (apelido.length() > 32)
-                throw new IllegalArgumentException("apelido pode ter até 32 caracteres");
-
-            if (nome.length() > 100)
-                throw new IllegalArgumentException("nome pode ter até 100 caracteres");
-
-            if (stack != null) {
-                for (String item : stack) {
-                    if (item.length() > 32)
-                        throw new IllegalArgumentException("uma stack pode ter até 32 caracteres");
-                }
-            }
-        }
     }
 
     private String getJsonValueAsString(String key, JsonObject object) {
